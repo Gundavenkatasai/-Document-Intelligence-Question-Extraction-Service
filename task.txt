@@ -1,0 +1,1652 @@
+# AUTONOMOUS ENGINEERING TASK
+
+You are the **Lead Backend Architect, Senior Python Engineer, Document-AI Engineer, Database Engineer, QA Engineer, and DevOps Engineer** responsible for implementing the complete assignment described below.
+
+You are not being asked to provide an implementation plan only.
+
+**You must actually build the working system inside the current repository.**
+
+Do not stop after generating a skeleton.
+
+Do not wait for additional requirements.
+
+Do not ask me to choose between reasonable implementation alternatives.
+
+Where the specification permits multiple approaches, make the engineering decision yourself, implement it, test it, and document the decision.
+
+Your final result must be a runnable, testable repository that another engineer can clone and start using from the README without needing undocumented manual steps.
+
+---
+
+# 1. SOURCE OF TRUTH
+
+The authoritative functional requirements are the supplied **"Engineering Assignment — Full Stack Developer — Round 2 — Document Intelligence & Question Extraction Service"**.
+
+The assignment requires a production-oriented service that:
+
+* accepts PDF documents and images containing examination/question-bank material
+* supports digitally generated PDFs and scanned PDFs
+* supports JPG/JPEG and PNG
+* handles different layouts and formatting styles
+* does not assume selectable text
+* extracts individual questions
+* extracts question numbers where available
+* extracts question text
+* extracts options
+* identifies question type
+* preserves associated images/tables where possible
+* preserves source document and source page information
+* handles questions spanning multiple pages
+* detects and associates answer keys
+* supports answer keys in the same document or separate documents
+* identifies uncertain/failed extraction results
+* provides confidence/review information
+* processes documents asynchronously
+* supports multiple related documents
+* protects documents and credentials
+* exposes a clean REST API
+* provides automated tests
+* provides Swagger/OpenAPI documentation
+* provides Postman/API workflow evidence
+* includes architecture/design documentation
+
+The assignment explicitly states that the system does **not** need to be a perfect OCR engine. The goal is to demonstrate reliable engineering around unstructured and imperfect input, appropriate technology choices, uncertainty handling, structured output, and scalability.
+
+Treat these requirements as mandatory acceptance criteria.
+
+---
+
+# 2. YOUR OPERATING MODE
+
+Work autonomously.
+
+Follow this execution loop:
+
+```text
+INSPECT
+  ↓
+DESIGN
+  ↓
+IMPLEMENT
+  ↓
+RUN
+  ↓
+TEST
+  ↓
+DEBUG
+  ↓
+IMPROVE
+  ↓
+VERIFY
+```
+
+Before changing code:
+
+1. Inspect the existing repository.
+2. Identify the current language, framework, files, configuration, and existing functionality.
+3. Reuse useful existing infrastructure where appropriate.
+4. Do not destroy unrelated user code.
+5. Determine whether the repository is empty or partially implemented.
+6. If the repository already contains a project, integrate the solution cleanly rather than blindly replacing it.
+
+Then begin implementation immediately.
+
+**Do not ask clarification questions for decisions that can reasonably be made from the assignment.**
+
+If something is genuinely unspecified, choose a sensible production-oriented default and document the assumption in `docs/architecture.md`.
+
+---
+
+# 3. PRIMARY OBJECTIVE
+
+Build this system:
+
+```text
+                   CLIENT
+                     │
+                     ▼
+              ┌─────────────┐
+              │   FastAPI   │
+              │ REST API    │
+              └──────┬──────┘
+                     │
+          ┌──────────┴──────────┐
+          ▼                     ▼
+   PostgreSQL               Object Storage
+   Metadata + Results       Original Files
+          │
+          ▼
+        Redis
+          │
+          ▼
+   Background Worker
+          │
+          ▼
+ ┌───────────────────────────────┐
+ │ Document Processing Pipeline  │
+ │                               │
+ │ File Validation               │
+ │ PDF/Image Detection           │
+ │ Page Rendering                │
+ │ Image Preprocessing           │
+ │ Native Text Extraction        │
+ │ OCR Fallback                  │
+ │ Question Segmentation         │
+ │ AI Structured Extraction      │
+ │ Multi-page Resolution         │
+ │ Answer-key Detection          │
+ │ Answer Matching               │
+ │ Confidence Calculation        │
+ │ Validation                    │
+ │ Review Flagging               │
+ └───────────────┬───────────────┘
+                 │
+                 ▼
+             PostgreSQL
+                 │
+                 ▼
+             REST APIs
+```
+
+The upload request must **not wait for complete document processing**.
+
+The client should receive a document/job identifier quickly and use the status endpoint to monitor processing.
+
+This asynchronous behavior is an explicit assignment requirement.
+
+---
+
+# 4. REQUIRED TECHNOLOGY
+
+Use the following stack unless an existing repository constraint makes an equivalent implementation necessary:
+
+### Backend
+
+* Python 3.11+
+* FastAPI
+* Pydantic v2
+* Uvicorn
+
+### Database
+
+* PostgreSQL
+* SQLAlchemy 2.x async
+* asyncpg
+* Alembic
+
+### Asynchronous processing
+
+* Redis
+* Celery
+
+### Document processing
+
+Use appropriate Python libraries for:
+
+* PDF inspection
+* PDF page rendering
+* native text extraction
+* image processing
+* OCR
+
+Prefer a layered extraction strategy instead of relying exclusively on OCR.
+
+### AI
+
+Use a multimodal AI/document-understanding model when useful for:
+
+* question segmentation
+* structured extraction
+* difficult layouts
+* image/table understanding
+* answer-key interpretation
+* ambiguous OCR correction
+
+The AI provider must be configurable through environment variables.
+
+Never hard-code API keys.
+
+The implementation must remain structurally usable if the AI provider is changed later.
+
+---
+
+# 5. EXTRACTION STRATEGY
+
+Do NOT simply send the entire document blindly to an LLM.
+
+Implement a staged pipeline.
+
+## Stage A — File validation
+
+Validate:
+
+* extension
+* MIME type
+* file signature/magic bytes where applicable
+* file size
+* supported formats
+* malformed files
+
+Supported:
+
+```text
+PDF
+JPG
+JPEG
+PNG
+```
+
+Reject unsupported or malformed input with a useful API error.
+
+Do not trust the filename extension alone.
+
+---
+
+# 6. DOCUMENT STORAGE
+
+Store the original uploaded file safely.
+
+The storage abstraction should make it possible to use:
+
+```text
+Local filesystem
+```
+
+for development and optionally:
+
+```text
+S3 / MinIO
+```
+
+for production.
+
+Do not couple business logic directly to local filesystem operations.
+
+Create a storage service abstraction.
+
+Never expose arbitrary filesystem paths through the API.
+
+---
+
+# 7. DOCUMENT PROCESSING
+
+For every document:
+
+1. Create a database record.
+2. Set status to `PENDING`.
+3. Queue asynchronous processing.
+4. Worker changes status to `PROCESSING`.
+5. Determine document type.
+6. Determine page count.
+7. Process each page.
+8. Preserve page numbering.
+9. Extract native text when available.
+10. Use OCR when native extraction is insufficient.
+11. Preprocess poor-quality images when required.
+12. Normalize extracted content.
+13. Identify question boundaries.
+14. Resolve questions spanning pages.
+15. Extract structured question data.
+16. Detect answer-key sections.
+17. Associate answers with questions.
+18. Calculate confidence.
+19. Create review items for uncertain results.
+20. Persist results.
+21. Set document status to `COMPLETED`.
+
+If processing fails:
+
+```text
+PROCESSING → FAILED
+```
+
+and store a useful sanitized error message.
+
+Never leave a document indefinitely stuck in `PROCESSING`.
+
+---
+
+# 8. DIGITAL PDF VS SCANNED PDF
+
+Support both.
+
+For digitally generated PDFs:
+
+```text
+PDF
+ ↓
+Native text extraction
+ ↓
+Question parsing
+```
+
+For scanned PDFs/images:
+
+```text
+PDF/Image
+ ↓
+Render/preprocess
+ ↓
+OCR
+ ↓
+Question parsing
+```
+
+Use OCR as a fallback where possible rather than automatically OCR-ing every digitally generated PDF.
+
+Preserve which extraction method was used in metadata.
+
+Example:
+
+```json
+{
+  "page": 3,
+  "extraction_method": "native_text"
+}
+```
+
+or:
+
+```json
+{
+  "page": 3,
+  "extraction_method": "ocr"
+}
+```
+
+---
+
+# 9. IMAGE PREPROCESSING
+
+Implement preprocessing appropriate for imperfect documents.
+
+Potential operations include:
+
+* orientation detection
+* rotation correction
+* deskewing
+* grayscale conversion
+* noise reduction
+* contrast enhancement
+* adaptive thresholding
+* resizing/upscaling when useful
+
+Do not apply expensive processing unnecessarily.
+
+Preserve the original page/image.
+
+If preprocessing fails, attempt a fallback path rather than silently dropping the page.
+
+---
+
+# 10. QUESTION EXTRACTION
+
+Each extracted question should contain, where available:
+
+```text
+question_id
+document_id
+question_number
+question_text
+question_type
+options
+answer
+source_pages
+confidence_score
+review_status
+raw_metadata
+```
+
+Also preserve useful provenance such as:
+
+```text
+page number
+extraction method
+AI/OCR metadata
+bounding box if available
+raw extraction reference
+warnings
+```
+
+The assignment specifically requires source-page preservation so that a reviewer can verify questionable results against the original document.
+
+---
+
+# 11. QUESTION TYPES
+
+Do not assume every document contains MCQs.
+
+Support at minimum:
+
+```text
+MULTIPLE_CHOICE
+TRUE_FALSE
+SHORT_ANSWER
+DESCRIPTIVE
+UNKNOWN
+```
+
+The architecture must permit additional types later.
+
+For MCQs, support different option formats such as:
+
+```text
+A. Option
+B. Option
+C. Option
+D. Option
+```
+
+and:
+
+```text
+(a) Option
+(b) Option
+(c) Option
+(d) Option
+```
+
+and numbered/bullet variations.
+
+Do not rely on one fixed regular expression.
+
+---
+
+# 12. MULTI-PAGE QUESTIONS
+
+This is a critical requirement.
+
+A question may begin on page N and continue on page N+1.
+
+Do not create two separate questions simply because a page boundary occurs.
+
+Use page context and question-boundary reasoning.
+
+Example:
+
+```text
+Page 4:
+17. Which of the following...
+A. ...
+B. ...
+
+Page 5:
+C. ...
+D. ...
+```
+
+The result should be one question:
+
+```json
+{
+  "question_number": "17",
+  "source_pages": [4, 5],
+  "options": [...]
+}
+```
+
+The implementation must preserve all relevant source pages.
+
+---
+
+# 13. QUESTION NUMBERING
+
+Do not assume one numbering format.
+
+Support examples such as:
+
+```text
+1.
+2.
+3.
+```
+
+```text
+Q1
+Q2
+Q3
+```
+
+```text
+Question 1
+Question 2
+```
+
+```text
+1)
+2)
+3)
+```
+
+```text
+1:
+2:
+```
+
+If a question number cannot be confidently identified, do not invent one.
+
+Allow:
+
+```json
+"question_number": null
+```
+
+and create appropriate metadata/review information.
+
+The assignment explicitly allows missing question numbers and imperfect formatting.
+
+---
+
+# 14. EMBEDDED IMAGES AND TABLES
+
+Questions may contain:
+
+* diagrams
+* figures
+* mathematical images
+* tables
+* charts
+
+Do not discard these silently.
+
+Where technically practical:
+
+* detect them
+* preserve their page relationship
+* store metadata
+* preserve/copy the relevant page image or region
+* indicate that visual content exists
+
+If exact visual extraction is not reliable, return a warning rather than fabricated content.
+
+---
+
+# 15. ANSWER-KEY PROCESSING
+
+Answer keys can occur:
+
+1. before questions
+2. after questions
+3. on another page
+4. in another document
+5. in a different formatting style
+
+The system must attempt to identify answer-key information.
+
+For example:
+
+```text
+1-A
+2-C
+3-B
+```
+
+or:
+
+```text
+1. A
+2. C
+3. B
+```
+
+or equivalent reasonable formats.
+
+Do not assume that answer-key position equals question position without validation.
+
+---
+
+# 16. RELATED DOCUMENTS
+
+Implement document groups.
+
+Example:
+
+```text
+Group: Mathematics Exam
+
+├── QuestionPaper.pdf
+└── AnswerKey.pdf
+```
+
+Both documents can belong to the same group.
+
+The answer matching service should be capable of using related documents when available.
+
+Do not require the question paper and answer key to be uploaded simultaneously.
+
+---
+
+# 17. ANSWER MATCHING SAFETY
+
+This is a critical correctness requirement.
+
+Never hallucinate an answer.
+
+If the system cannot reliably determine the answer:
+
+```json
+{
+  "answer": null,
+  "answer_confidence": 0.31,
+  "needs_review": true
+}
+```
+
+An uncertain answer is preferable to an incorrect answer.
+
+Preserve the source information used for the answer association.
+
+---
+
+# 18. CONFIDENCE SYSTEM
+
+Implement a transparent confidence mechanism.
+
+Do not make confidence a meaningless random number.
+
+Confidence should consider signals such as:
+
+* question structure completeness
+* presence/quality of question text
+* option completeness
+* OCR quality
+* numbering consistency
+* page-boundary consistency
+* answer-key matching confidence
+* AI structured-output validity
+* extraction warnings
+
+Create a documented scoring function.
+
+Example conceptual model:
+
+```text
+overall confidence =
+    text quality
+  + structural completeness
+  + option consistency
+  + page continuity
+  + answer matching confidence
+  - extraction penalties
+```
+
+Normalize the result to:
+
+```text
+0.0 → 1.0
+```
+
+Use a configurable review threshold.
+
+Default:
+
+```text
+confidence < 0.75
+→ PENDING_REVIEW
+```
+
+The threshold must be configurable rather than hard-coded throughout the codebase.
+
+Document exactly how the score is calculated.
+
+---
+
+# 19. REVIEW SYSTEM
+
+Create a review model or equivalent mechanism.
+
+A review item should explain:
+
+```text
+what failed
+why it was flagged
+confidence score
+document
+question
+source page
+warnings
+```
+
+Example warnings:
+
+```text
+LOW_OCR_QUALITY
+MISSING_QUESTION_NUMBER
+INCOMPLETE_OPTIONS
+MULTI_PAGE_AMBIGUITY
+ANSWER_UNMATCHED
+AI_PARSE_FAILURE
+TABLE_DETECTED
+IMAGE_DETECTED
+```
+
+Expose the review queue through the API.
+
+---
+
+# 20. DATABASE DESIGN
+
+Implement proper relational structure.
+
+At minimum:
+
+```text
+users
+document_groups
+documents
+document_pages
+processing_jobs
+extracted_questions
+question_options
+question_answers
+review_items
+```
+
+You may modify this design when necessary for correctness.
+
+Use:
+
+* UUID primary keys
+* foreign keys
+* indexes
+* timestamps
+* appropriate constraints
+* JSONB only where semi-structured metadata is genuinely appropriate
+
+Do not put the entire application state into one JSONB column.
+
+Use migrations through Alembic.
+
+---
+
+# 21. AUTHENTICATION AND AUTHORIZATION
+
+The assignment requires authorized document access.
+
+Implement a practical authentication mechanism appropriate for the assignment.
+
+At minimum:
+
+* authenticated API access
+* ownership/access checks
+* users cannot retrieve another user's documents
+* users cannot retrieve another user's questions
+* users cannot access arbitrary stored files
+
+Keep the authentication implementation simple enough to demonstrate clearly but architect it so it can be replaced with an external identity provider later.
+
+Document the design.
+
+---
+
+# 22. FILE SECURITY
+
+Implement:
+
+* maximum upload size
+* MIME/signature validation
+* extension validation
+* safe generated storage names
+* no direct path traversal
+* no arbitrary file retrieval
+* sanitized filenames
+* secure environment configuration
+* no secrets committed to Git
+
+Never expose:
+
+```text
+GEMINI_API_KEY
+DATABASE_URL
+REDIS_URL
+storage credentials
+```
+
+in source code.
+
+Provide `.env.example`.
+
+---
+
+# 23. REQUIRED API
+
+Implement versioned APIs:
+
+```text
+POST   /api/v1/documents/upload
+GET    /api/v1/documents/{document_id}/status
+GET    /api/v1/documents/{document_id}/questions
+GET    /api/v1/questions/{question_id}
+GET    /api/v1/documents/{document_id}/answer-key
+GET    /api/v1/reviews/flagged
+POST   /api/v1/groups
+GET    /api/v1/groups/{group_id}
+```
+
+Additional endpoints are allowed where they materially improve the design.
+
+Also provide:
+
+```text
+GET /health
+GET /ready
+```
+
+---
+
+# 24. UPLOAD API BEHAVIOR
+
+The upload endpoint must:
+
+1. authenticate the user
+2. validate file
+3. enforce size limit
+4. store original file
+5. create database record
+6. enqueue background job
+7. return immediately
+
+Expected response:
+
+```json
+{
+  "document_id": "uuid",
+  "status": "PENDING",
+  "message": "Document accepted for asynchronous processing"
+}
+```
+
+Use HTTP:
+
+```text
+202 Accepted
+```
+
+for successful asynchronous submission.
+
+---
+
+# 25. STATUS API
+
+Return useful processing information.
+
+Example:
+
+```json
+{
+  "document_id": "uuid",
+  "status": "PROCESSING",
+  "progress": 62,
+  "total_pages": 20,
+  "processed_pages": 12,
+  "questions_extracted": 18,
+  "warnings": 2
+}
+```
+
+Do not fake progress.
+
+Progress must correspond to actual processing state.
+
+---
+
+# 26. QUESTIONS API
+
+Support:
+
+```text
+GET /documents/{id}/questions
+```
+
+with useful filtering/pagination.
+
+Return structured question data.
+
+Support pagination so the API does not become unusable for large documents.
+
+---
+
+# 27. INDIVIDUAL QUESTION API
+
+Return:
+
+* question text
+* options
+* answer
+* confidence
+* review status
+* source pages
+* extraction metadata
+* warnings
+* document relationship
+
+---
+
+# 28. ANSWER KEY API
+
+Return matched answers and their confidence/provenance.
+
+Clearly distinguish:
+
+```text
+matched
+unmatched
+uncertain
+not_available
+```
+
+Do not return an uncertain answer as though it were verified.
+
+---
+
+# 29. REVIEW API
+
+Implement:
+
+```text
+GET /api/v1/reviews/flagged
+```
+
+Support filtering by:
+
+```text
+document
+confidence
+review status
+warning type
+```
+
+Pagination is required.
+
+---
+
+# 30. ERROR HANDLING
+
+Implement consistent API errors.
+
+Handle:
+
+```text
+invalid file
+unsupported file
+file too large
+malformed PDF
+corrupted image
+database failure
+queue failure
+OCR failure
+AI provider failure
+timeout
+document not found
+question not found
+unauthorized access
+invalid group
+processing failure
+```
+
+Do not expose stack traces or secrets to API clients.
+
+Log detailed internal errors.
+
+Return safe external error messages.
+
+---
+
+# 31. RETRY AND FAILURE HANDLING
+
+Background processing should tolerate transient failures.
+
+Implement sensible retry behavior for external services such as:
+
+* AI API
+* OCR
+* object storage
+
+Do not endlessly retry permanent failures.
+
+Ensure tasks are designed to avoid corrupting database state if retried.
+
+Document idempotency considerations.
+
+---
+
+# 32. CONCURRENCY AND SCALABILITY
+
+The architecture must support multiple documents being processed concurrently.
+
+Do not implement document processing as:
+
+```python
+while True:
+    process_next_document()
+```
+
+inside the API process.
+
+Use the task queue.
+
+Separate:
+
+```text
+API process
+Worker process
+Database
+Redis
+Storage
+```
+
+so workers can be scaled independently.
+
+Document how additional workers could be added.
+
+---
+
+# 33. AI INTEGRATION
+
+Create an abstraction such as:
+
+```text
+DocumentUnderstandingProvider
+```
+
+rather than spreading provider-specific API calls throughout the application.
+
+The provider should receive appropriate page/document context and return structured data.
+
+Validate AI responses against Pydantic schemas.
+
+Never blindly trust model-generated JSON.
+
+If the model returns malformed output:
+
+1. validate
+2. attempt controlled recovery if safe
+3. retry if appropriate
+4. otherwise flag the extraction for review
+
+Never silently convert malformed AI output into apparently valid data.
+
+---
+
+# 34. AI PROMPTING
+
+Create dedicated prompts for:
+
+```text
+question extraction
+answer-key extraction
+multi-page continuation
+ambiguous extraction
+```
+
+Keep prompts versioned/configurable where practical.
+
+The AI should be explicitly instructed:
+
+```text
+Do not invent missing information.
+Return null when uncertain.
+Preserve source page numbers.
+Distinguish observed text from inferred structure.
+```
+
+---
+
+# 35. OBSERVABILITY
+
+Implement useful structured logging.
+
+Every processing job should have enough context to trace:
+
+```text
+document_id
+job_id
+page
+processing stage
+duration
+failure reason
+```
+
+Do not log:
+
+* API keys
+* passwords
+* authentication tokens
+* sensitive file contents unnecessarily
+
+---
+
+# 36. TESTING
+
+Create automated tests with `pytest`.
+
+Test at least:
+
+### API
+
+* upload valid PDF
+* upload valid image
+* reject unsupported type
+* reject oversized file
+* unauthorized access
+* document status
+* question retrieval
+* individual question
+* answer key
+* review queue
+
+### Processing
+
+* digital PDF
+* scanned document
+* OCR fallback
+* multi-page question
+* multiple option formats
+* missing question number
+* answer key at end
+* answer key in separate document
+* unmatched answer
+* low-confidence question
+
+### Database
+
+* migrations
+* relationships
+* constraints
+
+### Worker
+
+* successful job
+* failed job
+* retry behavior
+
+Use mocked external AI/OCR services for deterministic tests.
+
+Do not make the core test suite dependent on paid external APIs.
+
+---
+
+# 37. SAMPLE DOCUMENTS
+
+Create or include safe sample documents demonstrating:
+
+1. normal digital question paper
+2. scanned question paper
+3. low-quality/rotated example
+4. multi-page question
+5. question paper + answer key
+6. intentionally ambiguous question
+7. invalid/unsupported document
+
+Do not fabricate evidence claiming an external AI successfully processed something if it was not actually tested.
+
+---
+
+# 38. DEMONSTRATION REQUIREMENTS
+
+The final repository must make it easy to demonstrate:
+
+```text
+1. Upload PDF
+2. Upload image
+3. Process scanned document
+4. Extract multiple questions
+5. Process multi-page question
+6. Extract options
+7. Associate answer key
+8. Show low-confidence question
+9. Retrieve structured question JSON
+10. Reject invalid document
+```
+
+These scenarios are explicitly required by the assignment.
+
+Provide sample curl commands and/or Postman workflows.
+
+---
+
+# 39. POSTMAN
+
+Create a Postman collection covering the complete workflow:
+
+```text
+Authentication
+Create group
+Upload question paper
+Upload answer key
+Check status
+Get questions
+Get question
+Get answer key
+Get review items
+Invalid upload
+```
+
+Use environment variables for:
+
+```text
+base_url
+token
+document_id
+question_id
+group_id
+```
+
+Do not hard-code secrets.
+
+---
+
+# 40. SWAGGER / OPENAPI
+
+FastAPI's OpenAPI documentation must be complete.
+
+Every endpoint should have:
+
+* summary
+* description
+* request schema
+* response schema
+* status codes
+* validation errors
+* authentication requirements
+
+Swagger UI must work at the standard FastAPI documentation endpoint.
+
+---
+
+# 41. DOCUMENTATION
+
+Create:
+
+```text
+README.md
+docs/architecture.md
+docs/api.md
+docs/decisions.md
+```
+
+README must include:
+
+* project purpose
+* architecture
+* prerequisites
+* environment variables
+* installation
+* Docker setup
+* database migration
+* starting API
+* starting workers
+* API usage
+* test commands
+* Swagger URL
+* Postman usage
+* sample workflow
+* troubleshooting
+
+---
+
+# 42. ARCHITECTURE DOCUMENTATION
+
+Explain:
+
+* overall architecture
+* API layer
+* PostgreSQL design
+* Redis/Celery architecture
+* document storage
+* OCR strategy
+* AI strategy
+* question extraction
+* multi-page handling
+* answer-key matching
+* confidence scoring
+* review mechanism
+* security
+* concurrency
+* scalability
+* failure handling
+* retries
+* trade-offs
+* limitations
+
+The assignment explicitly requests these architectural explanations.
+
+Create an architecture diagram in Markdown/Mermaid if useful.
+
+---
+
+# 43. ENVIRONMENT CONFIGURATION
+
+Create:
+
+```text
+.env.example
+```
+
+Include placeholders for all required configuration.
+
+Example categories:
+
+```text
+DATABASE_URL
+REDIS_URL
+STORAGE_BACKEND
+STORAGE_PATH
+MAX_UPLOAD_SIZE_MB
+AI_PROVIDER
+AI_API_KEY
+AI_MODEL
+CONFIDENCE_REVIEW_THRESHOLD
+SECRET_KEY
+```
+
+Never commit `.env`.
+
+Update `.gitignore`.
+
+---
+
+# 44. DOCKER
+
+Create a development-ready:
+
+```text
+docker-compose.yml
+```
+
+with services for:
+
+```text
+api
+worker
+postgres
+redis
+```
+
+Add storage service only if your selected architecture requires it.
+
+The README must allow a fresh developer to start the system using Docker.
+
+---
+
+# 45. CODE QUALITY
+
+Use:
+
+* type hints
+* clear module boundaries
+* Pydantic schemas
+* service-layer architecture
+* dependency injection where useful
+* meaningful names
+* small functions
+* proper exception handling
+* async database access
+* configuration management
+
+Avoid:
+
+* giant `main.py`
+* business logic inside routers
+* duplicated database logic
+* hard-coded secrets
+* hard-coded filesystem paths
+* unvalidated AI output
+* silently swallowed exceptions
+* fake placeholder implementations
+
+Do not create unnecessary abstractions merely for appearance.
+
+---
+
+# 46. PROJECT STRUCTURE
+
+Use a maintainable structure similar to:
+
+```text
+app/
+├── main.py
+├── core/
+│   ├── config.py
+│   ├── security.py
+│   └── logging.py
+├── db/
+│   ├── database.py
+│   ├── models/
+│   └── repositories/
+├── schemas/
+├── api/
+│   └── v1/
+│       ├── documents.py
+│       ├── questions.py
+│       ├── reviews.py
+│       └── groups.py
+├── services/
+│   ├── storage/
+│   ├── documents/
+│   ├── pdf/
+│   ├── ocr/
+│   ├── extraction/
+│   ├── answer_keys/
+│   ├── confidence/
+│   └── review/
+├── workers/
+│   ├── celery_app.py
+│   └── tasks.py
+└── ai/
+    ├── base.py
+    └── provider.py
+```
+
+Modify this if the repository architecture benefits from a different organization.
+
+---
+
+# 47. MIGRATIONS
+
+Use Alembic.
+
+The repository must contain an initial migration that can create the complete schema from an empty PostgreSQL database.
+
+Verify:
+
+```bash
+alembic upgrade head
+```
+
+works successfully.
+
+---
+
+# 48. DEFINITION OF DONE
+
+Do NOT consider the task complete merely because files were generated.
+
+The implementation is complete only when all of the following are true:
+
+```text
+[ ] Application starts
+[ ] PostgreSQL connects
+[ ] Redis connects
+[ ] Worker starts
+[ ] Alembic migrations work
+[ ] API starts
+[ ] Swagger works
+[ ] Authentication works
+[ ] PDF upload works
+[ ] Image upload works
+[ ] Invalid uploads are rejected
+[ ] Async processing works
+[ ] Status endpoint works
+[ ] Native PDF extraction works
+[ ] OCR fallback works
+[ ] Question extraction works
+[ ] Options extraction works
+[ ] Multi-page questions are handled
+[ ] Answer-key extraction works
+[ ] Related documents work
+[ ] Confidence scoring works
+[ ] Review queue works
+[ ] Source pages are preserved
+[ ] Errors are handled
+[ ] Tests pass
+[ ] Docker Compose works
+[ ] Postman collection exists
+[ ] README works from a clean environment
+[ ] No secrets are committed
+[ ] No fake implementation is presented as complete
+```
+
+---
+
+# 49. VALIDATION LOOP
+
+After implementation:
+
+### Step 1
+
+Run formatting/linting/type checks where configured.
+
+### Step 2
+
+Run unit tests.
+
+### Step 3
+
+Run integration tests.
+
+### Step 4
+
+Start the complete Docker environment.
+
+### Step 5
+
+Run database migrations from an empty database.
+
+### Step 6
+
+Start API and workers.
+
+### Step 7
+
+Execute the complete API workflow.
+
+### Step 8
+
+Test the sample documents.
+
+### Step 9
+
+Test failure scenarios.
+
+### Step 10
+
+Fix every discovered issue.
+
+### Step 11
+
+Run the complete test suite again.
+
+Do not report success based only on static code inspection.
+
+---
+
+# 50. FINAL RESPONSE AFTER BUILDING
+
+When implementation is complete, report:
+
+```text
+IMPLEMENTATION STATUS
+
+Repository:
+<path>
+
+Architecture:
+<short description>
+
+Implemented:
+<major components>
+
+API:
+<endpoint summary>
+
+Database:
+<summary>
+
+Async processing:
+<summary>
+
+OCR/AI:
+<summary>
+
+Testing:
+<actual test result>
+
+Docker:
+<actual result>
+
+Known limitations:
+<real limitations only>
+
+Commands:
+<exact commands to run>
+```
+
+Only report things that were actually implemented and verified.
+
+If something could not be tested because an external credential/service is unavailable, explicitly state:
+
+```text
+NOT VERIFIED
+```
+
+and explain exactly what remains to be tested.
+
+Never claim a test passed if you did not execute it.
+
+---
+
+# 51. IMPORTANT ENGINEERING RULES
+
+1. Build first; do not ask for permission for normal engineering decisions.
+2. Do not stop at scaffolding.
+3. Do not fabricate functionality.
+4. Do not fabricate test results.
+5. Do not fabricate sample outputs.
+6. Do not hallucinate answers extracted from documents.
+7. Prefer `null + review flag` over uncertain fabricated data.
+8. Keep external AI providers replaceable.
+9. Keep storage replaceable.
+10. Keep document processing asynchronous.
+11. Preserve source provenance.
+12. Validate all external inputs.
+13. Never commit secrets.
+14. Test the actual running system.
+15. Fix errors you encounter instead of merely reporting them.
+16. Keep the implementation understandable enough for a developer interview.
+17. Document important assumptions and trade-offs.
+18. Preserve existing useful repository work.
+19. Do not introduce a frontend unless it materially improves demonstration and does not compromise the backend requirements.
+20. The REST API and processing pipeline are the primary product.
+
+---
+
+# START NOW
+
+Inspect the current repository and begin implementation immediately.
+
+Do not ask me what stack to choose.
+
+Do not ask me what endpoint to implement first.
+
+Do not ask me whether to use Docker.
+
+Do not ask me whether to use PostgreSQL.
+
+Do not ask me whether asynchronous processing is required.
+
+Those decisions are already specified above.
+
+**Your first action is to inspect the repository, determine its current state, and start implementing the system.**
+
+Continue autonomously through implementation, testing, debugging, and verification until the Definition of Done is satisfied or a genuine external blocker makes further progress impossible.
