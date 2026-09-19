@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuestionMind AI — Intelligent Exam Paper Extractor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Header Navigation -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">🧠</div>
+        <div class="brand-text">
+          <h1>QuestionMind AI</h1>
+          <p>Intelligent Exam Paper Parser &amp; Autonomous Question Extraction Engine</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="status-badge">
+          <span class="status-pulse"></span>
+          <span>Engine Online</span>
+        </span>
+        <span id="userAuthBadge" class="btn-link">👤 demo@questionmind.ai</span>
+        <a href="/docs" target="_blank" class="btn-link" title="Open Interactive OpenAPI Swagger Documentation">
+          <span>Interactive API Docs</span> ↗
+        </a>
+        <a href="/health" target="_blank" class="btn-link" title="Check Health Status">
+          <span>Health</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- Upload & Quick Demo Showcase Grid -->
+    <section class="glass-panel upload-grid">
+      
+      <!-- Drag & Drop Zone -->
+      <div>
+        <div id="dropzone" class="dropzone">
+          <div class="dropzone-icon">📤</div>
+          <div class="dropzone-title">Upload Examination Document</div>
+          <p class="dropzone-sub">Drag & drop your PDF or image here, or click to browse</p>
+          <button class="btn-primary" type="button">Select File (PDF, PNG, JPG)</button>
+          <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
+        </div>
+      </div>
+
+      <!-- Quick Run One-Click Samples -->
+      <div class="samples-container">
+        <h3>⚡ Instant Benchmark Demonstrations</h3>
+        <p class="samples-sub">One-click execution of verified sample files covering all edge cases:</p>
+        
+        <div class="samples-list">
+          <div class="sample-btn" data-sample="01_digital_exam.pdf">
+            <span class="sample-icon">📄</span>
+            <div>
+              <div class="sample-btn-title">01 Digital Exam</div>
+              <div class="sample-btn-desc">Digital PDF • Native Text • MCQs</div>
+            </div>
+          </div>
+
+          <div class="sample-btn" data-sample="02_scanned_exam.png">
+            <span class="sample-icon">🖼️</span>
+            <div>
+              <div class="sample-btn-title">02 Scanned Paper</div>
+              <div class="sample-btn-desc">Scanned Image • OCR Fallback</div>
+            </div>
+          </div>
+
+          <div class="sample-btn" data-sample="03_rotated_exam.png">
+            <span class="sample-icon">🔄</span>
+            <div>
+              <div class="sample-btn-title">03 Rotated Exam</div>
+              <div class="sample-btn-desc">Deskew & Orientation Preprocess</div>
+            </div>
+          </div>
+
+          <div class="sample-btn" data-sample="04_multipage_exam.pdf">
+            <span class="sample-icon">📑</span>
+            <div>
+              <div class="sample-btn-title">04 Multi-Page Split</div>
+              <div class="sample-btn-desc">Question Spanning Across Pages</div>
+            </div>
+          </div>
+
+          <div class="sample-btn" data-sample="05_question_paper.pdf">
+            <span class="sample-icon">📝</span>
+            <div>
+              <div class="sample-btn-title">05 Exam + Key</div>
+              <div class="sample-btn-desc">Cross-Document Answer Match</div>
+            </div>
+          </div>
+
+          <div class="sample-btn" data-sample="06_ambiguous_exam.pdf">
+            <span class="sample-icon">⚠️</span>
+            <div>
+              <div class="sample-btn-title">06 Ambiguous Test</div>
+              <div class="sample-btn-desc">Low Confidence • Review Queue</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Real-time Processing Tracker -->
+    <section id="statusTracker" class="glass-panel status-tracker">
+      <div class="tracker-header">
+        <div class="tracker-title">
+          <span>Document Processing Pipeline</span>
+          <span id="docStatusBadge" class="badge badge-warning">PENDING</span>
+        </div>
+        <div style="font-size: 13px; color: var(--text-muted);">
+          ID: <code id="docIdDisplay" style="color: var(--accent-secondary);">—</code>
+        </div>
+      </div>
+
+      <div class="progress-track">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+
+      <div class="tracker-meta-grid">
+        <div class="meta-box">
+          <div class="meta-box-label">Progress</div>
+          <div id="progressPct" class="meta-box-val">0%</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-box-label">Pages Processed</div>
+          <div id="pagesCountDisplay" class="meta-box-val">—</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-box-label">Questions Found</div>
+          <div id="questionsCountDisplay" class="meta-box-val">—</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-box-label">Review Threshold</div>
+          <div class="meta-box-val" style="color: #a5b4fc;">0.75</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Results Explorer -->
+    <section class="glass-panel">
+      <!-- Tabs Navigation -->
+      <nav class="tabs-nav">
+        <button class="tab-btn active" data-tab="tabQuestions">
+          <span>Extracted Questions</span>
+          <span id="questionsCountBadge" class="tab-badge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="tabAnswers">
+          <span>Answer Keys & Matching</span>
+        </button>
+        <button class="tab-btn" data-tab="tabReviews">
+          <span>Flagged Review Queue</span>
+          <span id="reviewsCountBadge" class="tab-badge">0</span>
+        </button>
+        <button class="tab-btn" data-tab="tabJson">
+          <span>Structured JSON</span>
+        </button>
+      </nav>
+
+      <!-- Tab 1: Extracted Questions -->
+      <div id="tabQuestions" class="tab-pane active">
+        <div id="questionsList" class="questions-list">
+          <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <div class="empty-state-title">Ready for Document Ingestion</div>
+            <p>Select a sample document above or upload your custom examination paper.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Answer Keys -->
+      <div id="tabAnswers" class="tab-pane">
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Question #</th>
+                <th>Answer Key</th>
+                <th>Match Status</th>
+                <th>Source Page</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="answersTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted);">
+                  Process a document to view detected and matched answer keys.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 3: Flagged Review Queue -->
+      <div id="tabReviews" class="tab-pane">
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Question</th>
+                <th>Warning Code</th>
+                <th>Reason Flagged</th>
+                <th>Score</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="reviewsTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted);">
+                  No items in review queue.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 4: Raw JSON -->
+      <div id="tabJson" class="tab-pane">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+          <button id="copyJsonBtn" class="btn-secondary">Copy JSON 📋</button>
+        </div>
+        <pre id="jsonViewer" class="code-viewer">{ "message": "Submit a document to inspect full structured JSON output." }</pre>
+      </div>
+
+    </section>
+
+    <!-- Footer -->
+    <footer style="text-align: center; color: var(--text-muted); font-size: 13px; margin-top: 40px;">
+      <p>QuestionMind AI • Intelligent Exam Paper Extraction &amp; Analysis • Production Ready Architecture</p>
+    </footer>
+
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

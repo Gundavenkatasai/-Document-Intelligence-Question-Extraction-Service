@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "public": true,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://questionmind-ai.onrender.com/api/$1"
+    },
+    {
+      "source": "/health",
+      "destination": "https://questionmind-ai.onrender.com/health"
+    },
+    {
+      "source": "/static/(.*)",
+      "destination": "/static/$1"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}
