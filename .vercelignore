@@ -1,3 +1,4 @@
-*
-!public/**
-!vercel.json
+app/
+requirements.txt
+tests/
+main.py
