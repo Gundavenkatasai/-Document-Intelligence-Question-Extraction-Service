@@ -49,6 +49,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8000
 
-# Default command starts FastAPI application via Uvicorn
+# Copy startup script
+COPY start.sh ./start.sh
+RUN chmod +x ./start.sh
+
+# Default command: run migrations then start server
 # PORT is injected by Railway/Render at runtime; fallback to 8000 locally
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["./start.sh"]
+
