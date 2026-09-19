@@ -1,9 +1,14 @@
+from __future__ import annotations
 import io
 import shutil
 from typing import Tuple, Dict, Any
 from PIL import Image
-import numpy as np
 
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.preprocessing.image_processor import ImageProcessor
@@ -42,7 +47,7 @@ class OCRExtractor:
             metadata: Details regarding engine, words detected, etc.
         """
         # 1. Primary engine: RapidOCR (high-accuracy deep learning OCR operates best on raw images)
-        if self._rapidocr is not None:
+        if self._rapidocr is not None and HAS_NUMPY:
             try:
                 image = Image.open(io.BytesIO(image_bytes))
                 img_np = np.array(image)
