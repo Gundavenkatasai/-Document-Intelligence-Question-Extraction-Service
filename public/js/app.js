@@ -3,6 +3,20 @@
  */
 
 const API_BASE = '/api/v1';
+
+function isBackendDown(status) {
+  return status === 404 || status === 502 || status === 503 || status === 0;
+}
+
+function showBackendOffline() {
+  const el = document.getElementById('questionsList');
+  if (el) el.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-state-icon">⏳</div>
+      <div class="empty-state-title">Backend Starting Up</div>
+      <p>The Render backend is waking up from sleep (free tier). This takes ~30 seconds. Please try again shortly.</p>
+    </div>`;
+}
 let authToken = localStorage.getItem('doc_intel_token') || null;
 let currentDocumentId = null;
 let pollTimer = null;
@@ -154,8 +168,14 @@ async function uploadFile(file) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      alert(`Upload failed: ${err.detail || 'Error uploading document'}`);
+      if (isBackendDown(res.status)) {
+        showBackendOffline();
+        hideTracker();
+        return;
+      }
+      let errDetail = 'Error uploading document';
+      try { const err = await res.json(); errDetail = err.detail || errDetail; } catch(e) {}
+      alert(`Upload failed: ${errDetail}`);
       hideTracker();
       return;
     }
