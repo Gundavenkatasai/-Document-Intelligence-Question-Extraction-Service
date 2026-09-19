@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     MIN_CHARS_FOR_NATIVE_TEXT: int = 40  # If page has fewer chars, trigger OCR fallback
 
     # Document Understanding AI Provider
-    AI_PROVIDER: Literal["mock", "gemini", "openai"] = "mock"
+    AI_PROVIDER: Literal["rule_based", "gemini", "openai", "mock"] = "rule_based"
     AI_API_KEY: Optional[str] = None
     AI_MODEL: str = "gemini-1.5-flash"
 

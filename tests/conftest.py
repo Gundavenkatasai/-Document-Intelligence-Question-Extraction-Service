@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 # Configure test environment
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["STORAGE_PATH"] = "./data/test_storage"
-os.environ["AI_PROVIDER"] = "mock"
+os.environ["AI_PROVIDER"] = "rule_based"
 os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
 
 from app.core.security import get_password_hash, create_access_token

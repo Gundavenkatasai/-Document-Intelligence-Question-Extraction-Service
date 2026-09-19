@@ -8,21 +8,20 @@ from app.ai.base import (
 )
 
 
-class MockDocumentUnderstandingProvider(DocumentUnderstandingProvider):
-    """Deterministic, high-accuracy rule-based document understanding provider."""
+class RuleBasedDocumentUnderstandingProvider(DocumentUnderstandingProvider):
+    """Deterministic, high-accuracy rule-based document understanding and NLP parsing provider."""
 
     # Regex to detect question starts:
-    # Matches: "Q1. ", "Q1: ", "Question 1: ", "1. ", "1) ", "(1) ", "1: "
-    # Does NOT match "C. Option" or "D. Option"
+    # Matches: "Q1. ", "Q1: ", "Question 1: ", "1. ", "1) ", "(1) ", "1: ", "2.If"
     QUESTION_START_REGEX = re.compile(
-        r"^(?:(?:Question\s+|Q\.?\s*)(\d+|[IVXLCDMivxlcdm]+)|(\d+)[\.\:\)]|\((\d+)\))\s*[\.\:\-]?\s+(.+)",
+        r"^(?:(?:Question\s+|Q\.?\s*)(\d+|[IVXLCDMivxlcdm]+)|(\d+)[\.\:\)]|\((\d+)\))\s*[\.\:\-]?\s*(.+)",
         re.MULTILINE
     )
 
-    # Regex to detect options:
-    # A. , (A) , (a) , a) , A) , [A]
+    # Regex to detect options across clean and imperfect OCR formats:
+    # (A), A., A), [A], A:, A cos(x), A3, B.5
     OPTION_REGEX = re.compile(
-        r"^(?:\(([A-Za-z0-9])\)|([A-Za-z0-9])[\.\)\]]|\b([A-D])\b\s*[:\-])\s+(.+)",
+        r"^(?:\(([A-Za-z0-9])\)|([A-Za-z0-9])[\.\)\]]|([A-Da-d])\s*[:\.]|([A-Da-d])\s+(?=[A-Za-z0-9\-\(\$])|([A-Da-d])(?=\d))\s*(.+)",
         re.MULTILINE
     )
 
@@ -56,9 +55,10 @@ class MockDocumentUnderstandingProvider(DocumentUnderstandingProvider):
             # Check for answer line inside question
             ans_match = self.ANSWER_LINE_REGEX.match(line)
             if ans_match and current_q:
-                ans_key = ans_match.group(1).strip()
+                ans_key = ans_match.group(1).strip().upper()
                 current_q.detected_answer = ans_key
                 current_q.answer_reference = line
+                current_option = None
                 continue
 
             # Check for new question boundary
@@ -86,8 +86,8 @@ class MockDocumentUnderstandingProvider(DocumentUnderstandingProvider):
             # Check for option boundary
             opt_match = self.OPTION_REGEX.match(line)
             if opt_match:
-                key = (opt_match.group(1) or opt_match.group(2) or opt_match.group(3)).upper()
-                opt_text = opt_match.group(4).strip()
+                key = (opt_match.group(1) or opt_match.group(2) or opt_match.group(3) or opt_match.group(4) or opt_match.group(5)).upper()
+                opt_text = opt_match.group(6).strip()
                 if current_q is None:
                     # Orphan options at top of page continuing from previous page
                     current_q = ExtractedQuestionSchema(
@@ -160,3 +160,13 @@ class MockDocumentUnderstandingProvider(DocumentUnderstandingProvider):
                 reference=f"Q{q_num}: {ans}"
             ))
         return entries
+
+
+# Backward-compatible alias
+MockDocumentUnderstandingProvider = RuleBasedDocumentUnderstandingProvider
+
+__all__ = [
+    "RuleBasedDocumentUnderstandingProvider",
+    "MockDocumentUnderstandingProvider",
+]
+
