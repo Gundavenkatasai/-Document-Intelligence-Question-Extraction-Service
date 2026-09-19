@@ -45,3 +45,15 @@ class DocumentUnderstandingProvider(abc.ABC):
     async def parse_answer_key(self, text: str) -> List[AnswerKeyEntrySchema]:
         """Parses answer key tables or lists into structured mappings."""
         pass
+
+    async def extract_questions_from_document(
+        self,
+        page_texts: Dict[int, str]
+    ) -> List[ExtractedQuestionSchema]:
+        """Extracts individual questions across all pages preserving continuous cross-page flows."""
+        raw = {}
+        for p_num, text in page_texts.items():
+            raw[p_num] = await self.extract_questions_from_page(text, p_num)
+        from app.services.extraction.multipage_resolver import MultipageResolver
+        return MultipageResolver.merge_multipage_questions(raw)
+

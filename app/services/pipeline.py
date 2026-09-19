@@ -1,7 +1,8 @@
+import re
 import time
 import uuid
 from typing import List, Dict, Any, Optional
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -38,6 +39,33 @@ class DocumentProcessingPipeline:
         self.ocr_extractor = OCRExtractor()
         self.ai_provider = get_ai_provider()
 
+    @staticmethod
+    def _is_hollow_native_text(native_text: str, visual_info: Dict[str, Any]) -> bool:
+        """
+        Determines if a PDF page's native text stream is incomplete, placeholder,
+        or contains empty option labels masking embedded question images.
+        """
+        if not native_text or len(native_text.strip()) < settings.MIN_CHARS_FOR_NATIVE_TEXT:
+            return True
+
+        if native_text.count("\ufffd") >= 2:
+            return True
+
+        has_images = visual_info.get("embedded_image_count", 0) > 0 or visual_info.get("has_visual_content", False)
+        if has_images:
+            # Empty option numbers (e.g. 1.\n2.\n or A.\nB.\n with nothing in between)
+            if re.search(r"(?:1\.|A\.)\s*[\r\n]+\s*(?:2\.|B\.)", native_text):
+                return True
+            # Question headers immediately followed by Options with no question body text
+            if re.search(r"Question\s*(?:Number|No\.?|#)?\s*[:\.]?\s*\d+\s*[\r\n]+\s*Options\s*[:\.]?", native_text, re.IGNORECASE):
+                return True
+            # Very low meaningful word density relative to page having embedded images
+            words = re.findall(r"[a-zA-Z]{3,}", native_text)
+            if len(words) < 12:
+                return True
+
+        return False
+
     async def run(self, document_id: uuid.UUID) -> None:
         start_time = time.time()
         logger.info(f"Starting processing pipeline for document {document_id}", extra={"document_id": str(document_id), "stage": "INITIALIZE"})
@@ -61,6 +89,25 @@ class DocumentProcessingPipeline:
         self.db.add(job)
         doc.status = "PROCESSING"
         doc.error_message = None
+
+        # Clean up any existing pages/questions/reviews from previous runs
+        await self.db.execute(
+            delete(QuestionOption).where(
+                QuestionOption.question_id.in_(
+                    select(ExtractedQuestion.id).where(ExtractedQuestion.document_id == doc.id)
+                )
+            )
+        )
+        await self.db.execute(
+            delete(QuestionAnswer).where(
+                QuestionAnswer.question_id.in_(
+                    select(ExtractedQuestion.id).where(ExtractedQuestion.document_id == doc.id)
+                )
+            )
+        )
+        await self.db.execute(delete(ExtractedQuestion).where(ExtractedQuestion.document_id == doc.id))
+        await self.db.execute(delete(ReviewItem).where(ReviewItem.document_id == doc.id))
+        await self.db.execute(delete(DocumentPage).where(DocumentPage.document_id == doc.id))
         await self.db.commit()
 
         try:
@@ -85,14 +132,14 @@ class DocumentProcessingPipeline:
                     native_text, char_count = NativeExtractor.extract_text(content, p_num)
                     visual_info = PDFProcessor.detect_page_visual_elements(content, p_num)
 
-                    if char_count >= settings.MIN_CHARS_FOR_NATIVE_TEXT:
+                    if not self._is_hollow_native_text(native_text, visual_info):
                         ext_method = "native_text"
                         page_text = native_text
                         page_ocr_confs[p_num] = 1.0
                     else:
-                        # Scanned PDF page fallback to OCR
+                        # Scanned or image-embedded PDF page fallback to OCR
                         ext_method = "ocr"
-                        img_bytes = PDFProcessor.render_page_to_image(content, p_num)
+                        img_bytes = PDFProcessor.render_page_to_image(content, p_num, dpi=72)
                         page_text, ocr_conf, _ = self.ocr_extractor.extract_text(img_bytes)
                         page_ocr_confs[p_num] = ocr_conf
 
@@ -137,22 +184,18 @@ class DocumentProcessingPipeline:
             job.progress_percent = 40
             await self.db.commit()
 
-            raw_page_questions: Dict[int, List[ExtractedQuestionSchema]] = {}
-            for p_num, text in page_texts.items():
-                qs = await self.ai_provider.extract_questions_from_page(text, p_num)
-                # Check for visual references in question texts
-                for q in qs:
-                    vis_ref = VisualDetector.detect_visual_references(q.question_text)
-                    if vis_ref["has_visual_reference"]:
-                        q.has_visual = True
-                raw_page_questions[p_num] = qs
+            resolved_questions = await self.ai_provider.extract_questions_from_document(page_texts)
+
+            # Check for visual references in question texts
+            for q in resolved_questions:
+                vis_ref = VisualDetector.detect_visual_references(q.question_text)
+                if vis_ref["has_visual_reference"]:
+                    q.has_visual = True
 
             # 4. Multi-page question resolution
             job.stage = "MULTIPAGE_RESOLUTION"
             job.progress_percent = 60
             await self.db.commit()
-
-            resolved_questions = MultipageResolver.merge_multipage_questions(raw_page_questions)
 
             # 5. Answer Key Detection & Cross-document Matching
             job.stage = "ANSWER_KEY_MATCHING"

@@ -52,14 +52,14 @@ class MultipageResolver:
 
                 prev_q = all_questions[-1]
 
-                # Case 1: Current item is an unnumbered question starting with option C, D, etc.
-                # and previous question has options A, B
+                # Case 1: Current item is an unnumbered question starting with option C, D, 3, 4 etc.
+                # and previous question has options A, B, 1, 2, 3
                 if (
                     q.question_number is None
                     and q.options
                     and prev_q.options
-                    and q.options[0].key.upper() in ("C", "D", "E", "3", "4")
-                    and prev_q.options[-1].key.upper() in ("A", "B", "1", "2")
+                    and q.options[0].key.upper() in ("C", "D", "E", "2", "3", "4", "5")
+                    and prev_q.options[-1].key.upper() in ("A", "B", "C", "D", "1", "2", "3", "4")
                 ):
                     logger.info(
                         f"Merging multi-page MCQ options from page {p_num} into question {prev_q.question_number} (pages {prev_q.source_pages})"
@@ -99,6 +99,27 @@ class MultipageResolver:
                         f"Merging multi-page descriptive question stem from page {p_num} into question {prev_q.question_number}"
                     )
                     prev_q.question_text += " " + q.question_text.strip()
+                    if p_num not in prev_q.source_pages:
+                        prev_q.source_pages.append(p_num)
+                    continue
+
+                # Case 3: Question number header started at bottom of previous page, body/options continue at top of current page
+                if (
+                    prev_q.question_number is not None
+                    and not prev_q.options
+                    and q.question_number is None
+                    and (q.options or q.question_text)
+                ):
+                    logger.info(
+                        f"Merging multi-page question body/options from page {p_num} into question {prev_q.question_number}"
+                    )
+                    if not prev_q.question_text:
+                        prev_q.question_text = q.question_text.strip()
+                    elif q.question_text:
+                        prev_q.question_text += " " + q.question_text.strip()
+                    prev_q.options = q.options
+                    if q.options:
+                        prev_q.question_type = "MULTIPLE_CHOICE"
                     if p_num not in prev_q.source_pages:
                         prev_q.source_pages.append(p_num)
                     continue

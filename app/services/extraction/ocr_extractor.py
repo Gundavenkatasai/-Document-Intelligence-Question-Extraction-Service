@@ -41,12 +41,10 @@ class OCRExtractor:
             confidence: Estimated OCR confidence (0.0 to 1.0)
             metadata: Details regarding engine, words detected, etc.
         """
-        processed_bytes = ImageProcessor.preprocess_for_ocr(image_bytes)
-
-        # 1. Primary engine: RapidOCR (high-accuracy deep learning OCR)
+        # 1. Primary engine: RapidOCR (high-accuracy deep learning OCR operates best on raw images)
         if self._rapidocr is not None:
             try:
-                image = Image.open(io.BytesIO(processed_bytes))
+                image = Image.open(io.BytesIO(image_bytes))
                 img_np = np.array(image)
                 result, _ = self._rapidocr(img_np)
                 if result:
@@ -67,7 +65,8 @@ class OCRExtractor:
             except Exception as e:
                 logger.warning(f"RapidOCR extraction failed: {e}. Trying Tesseract fallback.")
 
-        # 2. Secondary engine: Tesseract OCR (if installed)
+        # 2. Secondary engine: Tesseract OCR (if installed) with preprocessing
+        processed_bytes = ImageProcessor.preprocess_for_ocr(image_bytes)
         if self._tesseract_available:
             try:
                 import pytesseract
