@@ -73,3 +73,31 @@ async def resolve_review_item(
             detail=f"Review item {review_id} not found or unauthorized."
         )
     return ReviewItemResponse.model_validate(item)
+
+
+@router.patch(
+    "/{review_id}/status",
+    response_model=ReviewItemResponse,
+    summary="Update review item status via query params",
+    description="Updates review item status (RESOLVED, DISMISSED) with optional notes."
+)
+async def update_review_status(
+    review_id: uuid.UUID,
+    status: str = Query(..., description="RESOLVED or DISMISSED"),
+    resolution_notes: Optional[str] = Query(None, description="Resolution notes"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    item = await DocumentService.resolve_review_item(
+        db=db,
+        review_id=review_id,
+        user_id=current_user.id,
+        status=status,
+        notes=resolution_notes
+    )
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Review item {review_id} not found or unauthorized."
+        )
+    return ReviewItemResponse.model_validate(item)

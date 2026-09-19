@@ -121,17 +121,18 @@ app.include_router(api_router, prefix=f"/{settings.API_V1_STR}")
 # Mount Web Dashboard
 import os
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-@app.get("/", include_in_schema=False)
-async def serve_dashboard():
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/index.html", methods=["GET", "HEAD"], include_in_schema=False)
+async def serve_dashboard(request: Request):
     index_path = os.path.join(static_dir, "index.html")
     if os.path.isfile(index_path):
-        return FileResponse(index_path)
+        return FileResponse(index_path, media_type="text/html")
     return JSONResponse(
         content={
             "message": "Document Intelligence & Question Extraction Service API",
@@ -139,4 +140,19 @@ async def serve_dashboard():
             "health": "/health"
         }
     )
+
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
+async def serve_favicon():
+    fav_path = os.path.join(static_dir, "favicon.ico")
+    if os.path.isfile(fav_path):
+        return FileResponse(fav_path, media_type="image/x-icon")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.api_route("/apple-touch-icon.png", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/apple-touch-icon-precomposed.png", methods=["GET", "HEAD"], include_in_schema=False)
+async def serve_touch_icon():
+    icon_path = os.path.join(static_dir, "apple-touch-icon.png")
+    if os.path.isfile(icon_path):
+        return FileResponse(icon_path, media_type="image/png")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
