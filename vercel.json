@@ -8,6 +8,10 @@
     {
       "source": "/health",
       "destination": "https://questionmind-ai.onrender.com/health"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/public/$1"
     }
   ],
   "headers": [
