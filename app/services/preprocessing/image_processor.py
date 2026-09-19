@@ -1,8 +1,14 @@
+from __future__ import annotations
 import io
 from typing import Tuple, Optional
-import numpy as np
-import cv2
 from PIL import Image
+
+try:
+    import numpy as np
+    import cv2
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
 
 from app.core.logging import logger
 
@@ -103,6 +109,9 @@ class ImageProcessor:
         5. Contrast enhancement
         6. Return preprocessed image bytes
         """
+        if not HAS_CV2:
+            return image_bytes
+
         try:
             bgr = cls.load_image_from_bytes(image_bytes)
             gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
