@@ -38,7 +38,7 @@ htmlcov/
 
 # Local databases & uploads
 data/
-storage/
+/storage/
 *.db
 *.sqlite
 *.sqlite3
